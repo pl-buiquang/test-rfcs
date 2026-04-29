@@ -1,0 +1,16 @@
+# CODEOWNERS for test-rfcs
+#
+# Default: ARB members are required reviewers for all RFCs.
+# Lines later in this file override earlier entries.
+
+# Default owners for everything in the repo
+*                               @pl-buiquang
+
+# RFC files require ARB review (placeholder team — replace before adoption)
+/rfcs/                          @pl-buiquang
+
+# Tooling owned by Change Admin / extract pipeline owners
+/tooling/decision-register/     @pl-buiquang
+
+# Repository / workflow config owned by ARB
+/.github/                       @pl-buiquang

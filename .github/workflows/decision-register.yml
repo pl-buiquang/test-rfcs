@@ -1,0 +1,49 @@
+name: CCB Decision Register Extract
+
+# Per WI §7.7: extract pipeline runs on PR merge/close events and on a
+# schedule before each release. The artifact (xlsx) is what gets uploaded
+# to Arena/Windchill and signed under SOP-00028.
+
+on:
+  pull_request_target:
+    types: [closed]
+  schedule:
+    - cron: '0 6 * * 1'  # Monday 06:00 UTC pre-release sweep
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "ISO date (YYYY-MM-DD) — only include PRs updated since this date"
+        required: false
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r tooling/decision-register/requirements.txt
+
+      - name: Run extract
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python tooling/decision-register/extract.py \
+            --repo "${{ github.repository }}" \
+            --output ccb_decision_register.xlsx \
+            ${{ inputs.since && format('--since {0}', inputs.since) || '' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ccb-decision-register
+          path: ccb_decision_register.xlsx
+          if-no-files-found: error
+          retention-days: 90

@@ -1,0 +1,198 @@
+name: Convert RFC Issue to PR
+
+# Fires when an Issue with the `rfc` label is opened or edited. On `opened`,
+# creates the RFC markdown file and opens a Draft PR. On `edited`, re-syncs
+# the updated Issue content to the RFC file on the existing PR branch — the
+# author never has to touch git or markdown.
+
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync-rfc:
+    if: contains(github.event.issue.labels.*.name, 'rfc')
+    runs-on: ubuntu-latest
+
+    env:
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      ISSUE_TITLE: ${{ github.event.issue.title }}
+      ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+      ISSUE_HTML_URL: ${{ github.event.issue.html_url }}
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Determine RFC ID and branch (reuse if PR already exists)
+        id: rfc
+        run: |
+          set -euo pipefail
+          BRANCH="rfc-issue-${ISSUE_NUMBER}"
+          RFC_ID=""
+
+          if git ls-remote --exit-code --heads origin "${BRANCH}" >/dev/null 2>&1; then
+            git fetch origin "${BRANCH}:${BRANCH}" --depth=1
+            RFC_ID=$(git ls-tree -r --name-only "${BRANCH}" -- 'rfcs/' \
+              | grep -oE '[0-9]{4}' | head -1 || true)
+          fi
+
+          if [ -z "${RFC_ID}" ]; then
+            LAST_ID=$(ls rfcs/ 2>/dev/null | grep -oE '^[0-9]+' | sort -n | tail -1 || true)
+            RFC_ID=$(printf "%04d" $(( ${LAST_ID:-0} + 1 )))
+          fi
+
+          echo "id=${RFC_ID}" >> "$GITHUB_OUTPUT"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate RFC markdown from Issue Form
+        uses: actions/github-script@v7
+        env:
+          RFC_ID: ${{ steps.rfc.outputs.id }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+            const rfcId = process.env.RFC_ID;
+
+            const getField = (label) => {
+              const re = new RegExp(`### ${label}\\s*\\n+([\\s\\S]*?)(?=\\n### |$)`);
+              const m = body.match(re);
+              if (!m) return '';
+              const v = m[1].trim();
+              return v === '_No response_' ? '' : v;
+            };
+
+            const title = issue.title.replace(/^RFC:\s*/i, '').trim();
+            const slug = title.toLowerCase()
+              .replace(/[^a-z0-9]+/g, '-')
+              .replace(/^-|-$/g, '')
+              .slice(0, 50) || `issue-${issue.number}`;
+            const date = new Date().toISOString().split('T')[0];
+            const tier = (getField('RFC Tier') || 'standard').toLowerCase();
+
+            const sections = [
+              ['Summary',                getField('Summary')              || '_To be filled in._'],
+              ['Problem / Motivation',   getField('Problem / Motivation') || '_To be filled in._'],
+              ['Approach',               getField('Proposed Approach')    || '_To be discussed._'],
+              ['Impact Triage',          getField('Impact Triage')        || '_To be filled in._'],
+              ['Who Does This Apply To?',getField('Who does this apply to?') || '_To be determined._'],
+              ['Testing Strategy',       '_To be defined._'],
+              ['Pending Questions',      getField('Pending Questions')    || '_None yet._'],
+              ['Resources',              getField('Resources / Links')    || '_None._'],
+            ];
+
+            const escapeYaml = (s) => (s || '').replace(/"/g, '\\"');
+            const fm = [
+              '---',
+              `rfc_id: ${rfcId}`,
+              `title: "${escapeYaml(title)}"`,
+              `author: "${escapeYaml(getField('Author'))}"`,
+              `team: "${escapeYaml(getField('Team'))}"`,
+              `tier: ${tier}`,
+              `status: draft`,
+              `date_created: ${date}`,
+              `date_last_updated: ${date}`,
+              `github_issue: ${issue.number}`,
+              `tags: []`,
+              '---',
+              '',
+              `# RFC-${rfcId}: ${title}`,
+              '',
+            ];
+
+            const sectionMd = sections
+              .flatMap(([h, v]) => [`## ${h}`, '', v, ''])
+              .join('\n');
+
+            const footer = [
+              '---',
+              `_Auto-generated from [Issue #${issue.number}](${issue.html_url}). Edit the Issue body to update this RFC._`,
+              '',
+            ].join('\n');
+
+            const content = fm.join('\n') + sectionMd + '\n' + footer;
+
+            // Clean up any stale file with the same issue but different slug
+            fs.mkdirSync('rfcs', { recursive: true });
+            for (const f of fs.readdirSync('rfcs')) {
+              if (!f.endsWith('.md')) continue;
+              const fp = path.join('rfcs', f);
+              const txt = fs.readFileSync(fp, 'utf8');
+              if (txt.includes(`github_issue: ${issue.number}`) && f !== `${rfcId}-${slug}.md`) {
+                fs.unlinkSync(fp);
+              }
+            }
+
+            const filePath = `rfcs/${rfcId}-${slug}.md`;
+            fs.writeFileSync(filePath, content);
+
+            core.exportVariable('RFC_FILE', filePath);
+            core.exportVariable('RFC_TITLE', title);
+            core.exportVariable('RFC_TIER', tier);
+
+      - name: Create or update Pull Request
+        id: pr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "rfc(${{ steps.rfc.outputs.id }}): sync from issue #${{ env.ISSUE_NUMBER }}"
+          branch: ${{ steps.rfc.outputs.branch }}
+          base: main
+          title: "RFC-${{ steps.rfc.outputs.id }}: ${{ env.RFC_TITLE }}"
+          body: |
+            Auto-generated from Issue #${{ env.ISSUE_NUMBER }}.
+
+            - **Issue:** #${{ env.ISSUE_NUMBER }}
+            - **Author:** ${{ env.ISSUE_AUTHOR }}
+            - **Tier:** ${{ env.RFC_TIER }}
+
+            The author iterates on the RFC by editing the Issue body. This PR's
+            RFC file is re-synced automatically on each Issue edit.
+
+            Reviewers: leave feedback in PR comments. The author will address
+            feedback by updating the Issue body.
+          labels: |
+            status:draft
+            rfc
+          draft: true
+
+      - name: Apply lightweight label if applicable
+        if: env.RFC_TIER == 'lightweight' && steps.pr.outputs.pull-request-number != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.pr.outputs.pull-request-number }},
+              labels: ['rfc:lightweight'],
+            });
+
+      - name: Comment on Issue (first time only)
+        if: github.event.action == 'opened' && steps.pr.outputs.pull-request-number != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNum = ${{ steps.pr.outputs.pull-request-number }};
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: [
+                `Your RFC has been created as PR #${prNum}.`,
+                ``,
+                `Review and discussion happen there. **Edit this Issue body to update the RFC** — the PR file syncs automatically.`,
+              ].join('\n'),
+            });

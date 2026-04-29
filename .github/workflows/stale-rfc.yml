@@ -1,0 +1,56 @@
+name: Stale RFC Notification
+
+# Per WI §7.6.2: if an RFC in status:open-for-review has no reviewer activity
+# for 20 business days, the CCB Chair must request an extension, escalate, or
+# propose closure. We post a soft nudge at 10 business days as well per
+# Appendix C.7.
+
+on:
+  schedule:
+    - cron: '0 9 * * 1-5'  # weekdays 09:00 UTC
+  workflow_dispatch:
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  check-stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const NUDGE_DAYS = 14;   // ~10 business days
+            const ESCALATE_DAYS = 28; // ~20 business days
+            const now = Date.now();
+
+            const { data: prs } = await github.rest.pulls.list({
+              owner, repo, state: 'open', per_page: 100,
+            });
+
+            for (const pr of prs) {
+              const labels = pr.labels.map(l => l.name);
+              if (!labels.includes('status:open-for-review')) continue;
+
+              const updated = new Date(pr.updated_at).getTime();
+              const ageDays = Math.floor((now - updated) / (1000 * 60 * 60 * 24));
+
+              if (ageDays >= ESCALATE_DAYS) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: pr.number,
+                  body: `**Stale RFC — ${ageDays} days without activity.** Per WI §7.6.2, the CCB Chair must request an extension with justification, escalate to the Engineering Lead, or propose closure.`,
+                });
+                await github.rest.issues.addLabels({
+                  owner, repo, issue_number: pr.number,
+                  labels: ['stale'],
+                });
+              } else if (ageDays >= NUDGE_DAYS) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: pr.number,
+                  body: `Reminder: this RFC has had no activity for ${ageDays} days. CCB Chair, please follow up with assigned reviewers.`,
+                });
+              }
+            }

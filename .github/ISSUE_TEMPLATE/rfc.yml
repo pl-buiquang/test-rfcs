@@ -1,0 +1,119 @@
+name: "RFC Proposal"
+description: "Propose a design change via the RFC process (no git knowledge required)"
+title: "RFC: "
+labels: ["status:draft", "rfc"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## RFC Proposal Form
+
+        Fill in this form to propose a design change. A Pull Request will be
+        automatically created from your submission. You can keep editing this
+        Issue body to iterate on the RFC — the linked PR file syncs
+        automatically. You never need to touch git or markdown directly.
+
+  - type: input
+    id: author
+    attributes:
+      label: "Author"
+      description: "Your full name"
+      placeholder: "Jane Doe"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: team
+    attributes:
+      label: "Team"
+      description: "Which team owns this proposal?"
+      options:
+        - A-Team
+        - Aortus
+        - Pulse Team
+        - NBX
+        - Data Team
+        - Stan-Team
+        - Product
+        - RPM
+        - Software QA
+        - Clinical
+        - Regulatory
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: "Summary"
+      description: "One-paragraph explanation of the proposed change"
+      placeholder: "We need to change X because Y, which will enable Z..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: "Problem / Motivation"
+      description: "Why is this change needed? What problem does it solve?"
+      placeholder: "Currently, users experience... This causes..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: approach
+    attributes:
+      label: "Proposed Approach"
+      description: "How do you suggest solving this? Can be rough or detailed."
+      placeholder: "The proposed solution is to..."
+
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: "Impact Triage"
+      description: "Check all areas potentially affected by this change"
+      options:
+        - label: "Design & Development File (DDF)"
+        - label: "Device function"
+        - label: "Intended use of the device"
+        - label: "Device performance"
+        - label: "Device safety / risk management"
+        - label: "Regulatory requirements / filings"
+        - label: "User needs / requirements"
+        - label: "Labeling (IFU, labels, release notes)"
+        - label: "Usability"
+        - label: "Cybersecurity"
+        - label: "Verification & Validation"
+        - label: "Training (internal or external)"
+
+  - type: textarea
+    id: applies_to
+    attributes:
+      label: "Who does this apply to?"
+      description: "All users? Specific customers? Feature flag needed?"
+      placeholder: "This applies to..."
+
+  - type: textarea
+    id: questions
+    attributes:
+      label: "Pending Questions"
+      description: "Any unresolved questions for reviewers?"
+
+  - type: textarea
+    id: resources
+    attributes:
+      label: "Resources / Links"
+      description: "Links to design mocks, related RFCs, documents, etc."
+
+  - type: dropdown
+    id: tier
+    attributes:
+      label: "RFC Tier"
+      description: "Lightweight is for Service Pack / non-safety / non-regulatory changes only."
+      options:
+        - standard
+        - lightweight
+      default: 0
+    validations:
+      required: true

@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+site/
+.venv/
+ccb_decision_register.xlsx
+docs/rfcs/[0-9]*.md

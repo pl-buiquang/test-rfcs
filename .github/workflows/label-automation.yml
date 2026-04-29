@@ -1,0 +1,76 @@
+name: RFC Label Automation
+
+# Keeps PR status labels in sync with PR state.
+# - Draft PR -> status:draft
+# - Ready-for-review PR -> status:open-for-review (and remove status:draft)
+# - Merged PR -> status:accepted (and remove others)
+# - Closed (not merged) without status:rejected/deferred -> nudge author
+
+on:
+  pull_request_target:
+    types: [opened, ready_for_review, converted_to_draft, closed]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const prNum = pr.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const action = context.payload.action;
+
+            const set = async (add, remove) => {
+              for (const l of remove) {
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner, repo, issue_number: prNum, name: l,
+                  });
+                } catch (e) {
+                  if (e.status !== 404) throw e;
+                }
+              }
+              if (add.length) {
+                await github.rest.issues.addLabels({
+                  owner, repo, issue_number: prNum, labels: add,
+                });
+              }
+            };
+
+            if (action === 'opened' || action === 'converted_to_draft') {
+              if (pr.draft) {
+                await set(['status:draft'], ['status:open-for-review']);
+              } else {
+                await set(['status:open-for-review'], ['status:draft']);
+              }
+              return;
+            }
+
+            if (action === 'ready_for_review') {
+              await set(['status:open-for-review'], ['status:draft']);
+              return;
+            }
+
+            if (action === 'closed') {
+              if (pr.merged) {
+                await set(
+                  ['status:accepted'],
+                  ['status:draft', 'status:open-for-review', 'status:rejected', 'status:deferred'],
+                );
+              } else {
+                const labels = pr.labels.map(l => l.name);
+                if (!labels.includes('status:rejected') && !labels.includes('status:deferred')) {
+                  await github.rest.issues.createComment({
+                    owner, repo, issue_number: prNum,
+                    body: 'This RFC PR was closed without an explicit decision label. The CCB Chair should apply `status:rejected` or `status:deferred` and document the rationale in a comment.',
+                  });
+                }
+              }
+            }

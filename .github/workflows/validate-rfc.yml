@@ -1,0 +1,31 @@
+name: Validate RFC
+
+# Status check enforced by branch protection. Validates RFC file frontmatter
+# and basic structural rules.
+
+on:
+  pull_request:
+    paths:
+      - 'rfcs/**'
+      - '.github/workflows/validate-rfc.yml'
+      - 'tooling/validate_rfc.py'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Validate changed RFC files
+        run: python tooling/validate_rfc.py rfcs/
