@@ -44,6 +44,9 @@ jobs:
           path: site
 
   deploy:
+    # Pages isn't available on free-plan private repos. Only run when
+    # explicitly dispatched, so push events don't fail.
+    if: github.event_name == 'workflow_dispatch'
     needs: build
     runs-on: ubuntu-latest
     environment:
