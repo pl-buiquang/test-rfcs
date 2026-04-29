@@ -41,12 +41,18 @@ jobs:
 
           if git ls-remote --exit-code --heads origin "${BRANCH}" >/dev/null 2>&1; then
             git fetch origin "${BRANCH}:${BRANCH}" --depth=1
-            RFC_ID=$(git ls-tree -r --name-only "${BRANCH}" -- 'rfcs/' \
-              | grep -oE '[0-9]{4}' | head -1 || true)
+            # Match the file in rfcs/ whose frontmatter pins this issue.
+            MATCH=$(git grep -lE "^github_issue: ${ISSUE_NUMBER}$" "${BRANCH}" -- 'rfcs/*.md' || true)
+            if [ -n "${MATCH}" ]; then
+              # MATCH lines look like "<sha>:rfcs/0042-foo.md" — extract NNNN.
+              RFC_ID=$(echo "${MATCH}" | head -1 | sed -E 's|.*rfcs/([0-9]{4})-.*|\1|')
+            fi
           fi
 
           if [ -z "${RFC_ID}" ]; then
-            LAST_ID=$(ls rfcs/ 2>/dev/null | grep -oE '^[0-9]+' | sort -n | tail -1 || true)
+            # Skip the 0000 template when computing the next ID.
+            LAST_ID=$(ls rfcs/ 2>/dev/null \
+              | grep -oE '^[0-9]+' | sort -n | grep -v '^0000$' | tail -1 || true)
             RFC_ID=$(printf "%04d" $(( ${LAST_ID:-0} + 1 )))
           fi
 
