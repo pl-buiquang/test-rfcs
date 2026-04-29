@@ -5,10 +5,6 @@ name: Validate RFC
 
 on:
   pull_request:
-    paths:
-      - 'rfcs/**'
-      - '.github/workflows/validate-rfc.yml'
-      - 'tooling/validate_rfc.py'
 
 permissions:
   contents: read
