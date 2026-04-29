@@ -169,6 +169,8 @@ jobs:
 
             Reviewers: leave feedback in PR comments. The author will address
             feedback by updating the Issue body.
+
+            Closes #${{ env.ISSUE_NUMBER }}
           labels: |
             status:draft
             rfc

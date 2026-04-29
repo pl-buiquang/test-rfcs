@@ -59,18 +59,41 @@ jobs:
             }
 
             if (action === 'closed') {
+              const labels = pr.labels.map(l => l.name);
+
               if (pr.merged) {
                 await set(
                   ['status:accepted'],
                   ['status:draft', 'status:open-for-review', 'status:rejected', 'status:deferred'],
                 );
+                // Linked issue auto-closes via "Closes #N" in the PR body.
               } else {
-                const labels = pr.labels.map(l => l.name);
                 if (!labels.includes('status:rejected') && !labels.includes('status:deferred')) {
                   await github.rest.issues.createComment({
                     owner, repo, issue_number: prNum,
                     body: 'This RFC PR was closed without an explicit decision label. The CCB Chair should apply `status:rejected` or `status:deferred` and document the rationale in a comment.',
                   });
+                }
+              }
+
+              // Close the linked Issue (whether merged or not). GitHub only
+              // auto-closes the issue on merge — for reject/defer we close it
+              // ourselves with the right state_reason.
+              const issueRef = (pr.body || '').match(/(?:closes|fixes|resolves)\s+#(\d+)/i)
+                            || (pr.body || '').match(/\bIssue:\s*#(\d+)/i);
+              if (issueRef) {
+                const issueNumber = parseInt(issueRef[1], 10);
+                const stateReason = pr.merged
+                  ? 'completed'
+                  : (labels.includes('status:deferred') ? 'not_planned' : 'not_planned');
+                try {
+                  await github.rest.issues.update({
+                    owner, repo, issue_number: issueNumber,
+                    state: 'closed',
+                    state_reason: stateReason,
+                  });
+                } catch (e) {
+                  if (e.status !== 404 && e.status !== 410) throw e;
                 }
               }
             }
